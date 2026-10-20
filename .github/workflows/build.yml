@@ -3,8 +3,7 @@ name: Inspect ZENIX Files
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
@@ -12,43 +11,41 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Download repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Inspect uploaded files
+      - name: Inspect every repository file
         shell: bash
         run: |
           python3 - <<'PY'
           import os
           import zipfile
           import tarfile
-          import hashlib
 
-          for name in os.listdir("."):
-              if name.startswith(".") or not os.path.isfile(name):
-                  continue
+          for root, dirs, files in os.walk("."):
+              dirs[:] = [d for d in dirs if d != ".git"]
 
-              size = os.path.getsize(name)
-              print(f"\nFILE: {name}")
-              print(f"SIZE: {size} bytes")
+              for name in files:
+                  path = os.path.join(root, name)
+                  size = os.path.getsize(path)
 
-              with open(name, "rb") as f:
-                  data = f.read(32)
+                  print(f"\nFILE: {path}")
+                  print(f"SIZE: {size} bytes")
 
-              print(f"HEADER: {data[:16].hex()}")
+                  with open(path, "rb") as f:
+                      header = f.read(32)
 
-              if zipfile.is_zipfile(name):
-                  print("FORMAT: ZIP")
-                  with zipfile.ZipFile(name) as z:
-                      for item in z.namelist()[:40]:
-                          print("  ", item)
+                  print(f"HEADER: {header.hex()}")
 
-              elif tarfile.is_tarfile(name):
-                  print("FORMAT: TAR")
-              else:
-                  print("FORMAT: UNKNOWN / BINARY")
-
-              print("SHA256:", hashlib.sha256(open(name, "rb").read()).hexdigest())
+                  if zipfile.is_zipfile(path):
+                      print("FORMAT: ZIP")
+                      with zipfile.ZipFile(path) as archive:
+                          for item in archive.namelist()[:25]:
+                              print("  ", item)
+                  elif tarfile.is_tarfile(path):
+                      print("FORMAT: TAR")
+                  elif header.startswith(b"PK"):
+                      print("FORMAT: ZIP-like; archive needs inspection")
+                  else:
+                      print("FORMAT: other")
           PY
