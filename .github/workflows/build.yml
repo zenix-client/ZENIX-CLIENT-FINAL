@@ -1,4 +1,4 @@
-name: Inspect ZENIX Files
+name: Build ZENIX CLIENT
 
 on:
   workflow_dispatch:
@@ -9,43 +9,94 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  build:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Inspect every repository file
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Extract source archive
         shell: bash
         run: |
           python3 - <<'PY'
           import os
           import zipfile
-          import tarfile
 
-          for root, dirs, files in os.walk("."):
-              dirs[:] = [d for d in dirs if d != ".git"]
+          archives = [
+              f for f in os.listdir(".")
+              if f.endswith(".bin") and zipfile.is_zipfile(f)
+          ]
 
-              for name in files:
-                  path = os.path.join(root, name)
-                  size = os.path.getsize(path)
+          if not archives:
+              raise SystemExit("ERROR: Source ZIP archive not found")
 
-                  print(f"\nFILE: {path}")
-                  print(f"SIZE: {size} bytes")
+          for archive in archives:
+              print("Extracting:", archive)
+              with zipfile.ZipFile(archive) as z:
+                  z.extractall("workspace")
 
-                  with open(path, "rb") as f:
-                      header = f.read(32)
-
-                  print(f"HEADER: {header.hex()}")
-
-                  if zipfile.is_zipfile(path):
-                      print("FORMAT: ZIP")
-                      with zipfile.ZipFile(path) as archive:
-                          for item in archive.namelist()[:25]:
-                              print("  ", item)
-                  elif tarfile.is_tarfile(path):
-                      print("FORMAT: TAR")
-                  elif header.startswith(b"PK"):
-                      print("FORMAT: ZIP-like; archive needs inspection")
-                  else:
-                      print("FORMAT: other")
+          print("Extraction complete")
           PY
+
+      - name: Inspect Gradle project
+        shell: bash
+        run: |
+          echo "Project files:"
+          find workspace -maxdepth 5 -type f | sort | head -200
+
+          if [ ! -f workspace/zwork/build.gradle ]; then
+            echo "ERROR: zwork/build.gradle not found"
+            exit 1
+          fi
+
+      - name: Check Gradle Wrapper
+        shell: bash
+        run: |
+          cd workspace/zwork
+
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Gradle Wrapper JAR is missing."
+            echo "Checking if Gradle can be installed in CI..."
+            exit 1
+          fi
+
+          chmod +x gradlew
+          ./gradlew --version
+
+      - name: Build project
+        shell: bash
+        run: |
+          cd workspace/zwork
+          ./gradlew --no-daemon clean build
+
+      - name: Locate JAR
+        shell: bash
+        run: |
+          mkdir -p output
+
+          find workspace/zwork/build/libs -maxdepth 1 \
+            -type f -name '*.jar' \
+            ! -name '*-sources.jar' \
+            ! -name '*-javadoc.jar' \
+            -exec cp {} output/ \;
+
+          if ! find output -name '*.jar' -print -quit | grep -q .; then
+            echo "ERROR: No JAR generated"
+            exit 1
+          fi
+
+          ls -lh output
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZENIX-CLIENT-FINAL
+          path: output/*.jar
+          if-no-files-found: error
