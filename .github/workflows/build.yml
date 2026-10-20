@@ -1,4 +1,4 @@
-name: Build ZENIX CLIENT
+name: Inspect ZENIX Files
 
 on:
   workflow_dispatch:
@@ -10,61 +10,45 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  inspect:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Download repository
         uses: actions/checkout@v4
 
-      - name: Set up Java 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Inspect project
-        run: |
-          echo "Repository files:"
-          find . -maxdepth 5 -type f -not -path './.git/*' | sort
-
-      - name: Check Gradle Wrapper
+      - name: Inspect uploaded files
         shell: bash
         run: |
-          WRAPPER="$(find . -type f -name gradlew -not -path '*/.git/*' | head -n 1)"
+          python3 - <<'PY'
+          import os
+          import zipfile
+          import tarfile
+          import hashlib
 
-          if [ -z "$WRAPPER" ]; then
-            echo "ERROR: gradlew not found"
-            exit 1
-          fi
+          for name in os.listdir("."):
+              if name.startswith(".") or not os.path.isfile(name):
+                  continue
 
-          PROJECT_DIR="$(dirname "$WRAPPER")"
-          cd "$PROJECT_DIR"
+              size = os.path.getsize(name)
+              print(f"\nFILE: {name}")
+              print(f"SIZE: {size} bytes")
 
-          if [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "ERROR: gradle-wrapper.jar is missing"
-            exit 1
-          fi
+              with open(name, "rb") as f:
+                  data = f.read(32)
 
-          if [ ! -f gradle/wrapper/gradle-wrapper.properties ]; then
-            echo "ERROR: gradle-wrapper.properties is missing"
-            exit 1
-          fi
+              print(f"HEADER: {data[:16].hex()}")
 
-          chmod +x gradlew
-          ./gradlew --version
+              if zipfile.is_zipfile(name):
+                  print("FORMAT: ZIP")
+                  with zipfile.ZipFile(name) as z:
+                      for item in z.namelist()[:40]:
+                          print("  ", item)
 
-      - name: Build JAR
-        shell: bash
-        run: |
-          WRAPPER="$(find . -type f -name gradlew -not -path '*/.git/*' | head -n 1)"
-          PROJECT_DIR="$(dirname "$WRAPPER")"
-          cd "$PROJECT_DIR"
-          ./gradlew --no-daemon clean build
+              elif tarfile.is_tarfile(name):
+                  print("FORMAT: TAR")
+              else:
+                  print("FORMAT: UNKNOWN / BINARY")
 
-      - name: Upload JAR
-        uses: actions/upload-artifact@v4
-        with:
-          name: ZENIX-CLIENT-FINAL
-          path: '**/build/libs/*.jar'
-          if-no-files-found: error
+              print("SHA256:", hashlib.sha256(open(name, "rb").read()).hexdigest())
+          PY
