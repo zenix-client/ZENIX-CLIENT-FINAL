@@ -3,10 +3,8 @@ name: Build ZENIX CLIENT
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-
-permissions:
-  contents: read
+    branches:
+      - main
 
 jobs:
   build:
@@ -23,71 +21,38 @@ jobs:
           java-version: '21'
 
       - name: Extract source archive
-        shell: bash
         run: |
           python3 - <<'PY'
-          import os
           import zipfile
+          from pathlib import Path
 
-          archives = [
-              f for f in os.listdir(".")
-              if f.endswith(".bin") and zipfile.is_zipfile(f)
-          ]
+          archive = Path("0b58782b-8211-4d51-b827-6e67d6a590e3.bin")
+          if not archive.exists():
+              raise SystemExit("Source archive not found")
 
-          if not archives:
-              raise SystemExit("ERROR: Source ZIP archive not found")
+          with zipfile.ZipFile(archive) as z:
+              z.extractall("workspace")
 
-          for archive in archives:
-              print("Extracting:", archive)
-              with zipfile.ZipFile(archive) as z:
-                  z.extractall("workspace")
+          if not Path("workspace/zwork/build.gradle").exists():
+              raise SystemExit("workspace/zwork/build.gradle not found")
 
-          print("Extraction complete")
+          print("Source archive extracted successfully")
           PY
 
-      - name: Inspect Gradle project
-        shell: bash
-        run: |
-          echo "Project files:"
-          find workspace -maxdepth 5 -type f | sort | head -200
-
-          if [ ! -f workspace/zwork/build.gradle ]; then
-            echo "ERROR: zwork/build.gradle not found"
-            exit 1
-          fi
-
-      -       - name: Install Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
 
       - name: Build project
-        shell: bash
         run: |
           cd workspace/zwork
-          ./gradlew --no-daemon clean build
+          gradle --no-daemon clean build
 
-      - name: Locate JAR
-        shell: bash
-        run: |
-          mkdir -p output
-
-          find workspace/zwork/build/libs -maxdepth 1 \
-            -type f -name '*.jar' \
-            ! -name '*-sources.jar' \
-            ! -name '*-javadoc.jar' \
-            -exec cp {} output/ \;
-
-          if ! find output -name '*.jar' -print -quit | grep -q .; then
-            echo "ERROR: No JAR generated"
-            exit 1
-          fi
-
-          ls -lh output
-
-      - name: Upload JAR
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ZENIX-CLIENT-FINAL
-          path: output/*.jar
+          name: ZENIX-CLIENT-build
+          path: |
+            workspace/zwork/build/libs/*.jar
           if-no-files-found: error
