@@ -1,0 +1,20 @@
+# ZENIX CLIENT (Minecraft 1.21.4, Fabric, Java 21)
+
+**Build status: NOT RUN.** Nothing here has been compiled yet. The first GitHub Actions run is the real test.
+
+## Build from an Android tablet
+1. Create a free GitHub account in the browser, then a new empty repository (name it `zenix-client`, branch `main`).
+2. Unzip `ZENIX-CLIENT-SOURCE-FINAL.zip` on the tablet (Files app). In the repository page choose **Add file > Upload files** and upload the
+   *contents* of the `zwork` folder (including the hidden `.github` folder; if your file manager hides it, upload the `.github/workflows/build.yml` file separately via **Add file > Create new file** and paste its text with the path `.github/workflows/build.yml`).
+3. Open the **Actions** tab, pick **Build ZENIX CLIENT**, press **Run workflow**.
+4. When the run finishes (about 5-10 minutes) open it: the artifact **zenix-client-jar** is the mod; **build-logs** and **build-report** explain failures.
+5. If the run is red, open the failed step, copy the first `error:` lines and send them to me.
+
+## Install on Android (Zalith Launcher)
+1. Download the artifact from the run page (it is a ZIP containing the JAR; unzip it).
+2. In Zalith create a Fabric 1.21.4 profile (loader 0.16+), Java 21.
+3. Put `zenix-client-*.jar` and Fabric API `0.119.2+1.21.4` into the profile's `mods` folder.
+4. Launch. Right Shift or the CLICKGUI card opens the ClickGUI; Bots tab is opened from the main menu / GUI.
+
+The Gradle wrapper JAR is created automatically by the workflow on the first run.
+See `docs/FEATURES.md` for what really works and `docs/STATUS.md` for known limits.
