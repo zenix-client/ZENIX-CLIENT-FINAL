@@ -56,19 +56,10 @@ jobs:
             exit 1
           fi
 
-      - name: Check Gradle Wrapper
-        shell: bash
-        run: |
-          cd workspace/zwork
-
-          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Gradle Wrapper JAR is missing."
-            echo "Checking if Gradle can be installed in CI..."
-            exit 1
-          fi
-
-          chmod +x gradlew
-          ./gradlew --version
+      -       - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
 
       - name: Build project
         shell: bash
