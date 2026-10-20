@@ -1,8 +1,37 @@
-      - name: Prepare Gradle Wrapper
+name: Build ZENIX CLIENT
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Inspect project
+        run: |
+          echo "Repository files:"
+          find . -maxdepth 5 -type f -not -path './.git/*' | sort
+
+      - name: Check Gradle Wrapper
         shell: bash
         run: |
-          WRAPPER="$(find . -type f -name gradlew \
-            -not -path '*/.git/*' | head -n 1)"
+          WRAPPER="$(find . -type f -name gradlew -not -path '*/.git/*' | head -n 1)"
 
           if [ -z "$WRAPPER" ]; then
             echo "ERROR: gradlew not found"
@@ -13,15 +42,12 @@
           cd "$PROJECT_DIR"
 
           if [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Gradle Wrapper JAR is missing."
-            echo "Checking wrapper properties..."
+            echo "ERROR: gradle-wrapper.jar is missing"
+            exit 1
+          fi
 
-            if [ ! -f gradle/wrapper/gradle-wrapper.properties ]; then
-              echo "ERROR: gradle-wrapper.properties is missing"
-              exit 1
-            fi
-
-            cat gradle/wrapper/gradle-wrapper.properties
+          if [ ! -f gradle/wrapper/gradle-wrapper.properties ]; then
+            echo "ERROR: gradle-wrapper.properties is missing"
             exit 1
           fi
 
@@ -31,10 +57,14 @@
       - name: Build JAR
         shell: bash
         run: |
-          WRAPPER="$(find . -type f -name gradlew \
-            -not -path '*/.git/*' | head -n 1)"
-
+          WRAPPER="$(find . -type f -name gradlew -not -path '*/.git/*' | head -n 1)"
           PROJECT_DIR="$(dirname "$WRAPPER")"
           cd "$PROJECT_DIR"
-
           ./gradlew --no-daemon clean build
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZENIX-CLIENT-FINAL
+          path: '**/build/libs/*.jar'
+          if-no-files-found: error
