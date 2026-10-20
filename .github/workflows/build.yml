@@ -1,0 +1,103 @@
+name: Build ZENIX CLIENT
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '**'
+      - '!README.md'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Inspect uploaded files
+        shell: bash
+        run: |
+          echo "Files in repository:"
+          find . -maxdepth 4 -type f -not -path './.git/*' -printf '%p (%s bytes)\n'
+
+          echo
+          echo "Checking BIN file formats:"
+          python3 - <<'PY'
+          import os
+          import zipfile
+          import tarfile
+
+          for name in os.listdir("."):
+              if not name.lower().endswith(".bin"):
+                  continue
+
+              print(f"\nFile: {name}")
+              if zipfile.is_zipfile(name):
+                  print("Detected ZIP archive")
+                  with zipfile.ZipFile(name) as z:
+                      print("\n".join(z.namelist()[:30]))
+                      z.extractall("extracted_" + name[:-4])
+              elif tarfile.is_tarfile(name):
+                  print("Detected TAR archive")
+                  with tarfile.open(name) as t:
+                      print("\n".join(t.getnames()[:30]))
+                      t.extractall("extracted_" + name[:-4], filter="data")
+              else:
+                  with open(name, "rb") as f:
+                      print("First 16 bytes:", f.read(16).hex())
+                  print("Unknown format; not extracted.")
+          PY
+
+      - name: Locate Gradle project
+        id: project
+        shell: bash
+        run: |
+          if find . -name gradlew -type f | grep -q .; then
+            echo "wrapper=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wrapper=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build JAR
+        if: steps.project.outputs.wrapper == 'true'
+        shell: bash
+        run: |
+          chmod +x "$(find . -name gradlew -type f | head -n 1)"
+          cd "$(dirname "$(find . -name gradlew -type f | head -n 1)")"
+          ./gradlew --no-daemon clean build
+
+      - name: Find generated JAR
+        id: jar
+        shell: bash
+        run: |
+          mkdir -p output
+          find . -type f -path '*/build/libs/*.jar' \
+            ! -name '*-sources.jar' \
+            ! -name '*-javadoc.jar' \
+            -exec cp {} output/ \;
+
+          if [ -z "$(find output -name '*.jar' -print -quit)" ]; then
+            echo "No JAR was generated."
+            echo "The uploaded files may not contain an extractable source project or Gradle Wrapper."
+            exit 1
+          fi
+
+          ls -lh output
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZENIX-CLIENT-FINAL
+          path: output/*.jar
+          if-no-files-found: error
